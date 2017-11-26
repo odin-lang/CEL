@@ -1,7 +1,7 @@
 # CEL
 Configuration Expression Language (CEL) is a language meant for configuration purposes.
 
-```python
+```nim
 x = 123;
 y = 321.456;
 z = x * (y - 1) / 2;
