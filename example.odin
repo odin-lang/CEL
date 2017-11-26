@@ -1,6 +1,5 @@
 import "cel.odin";
 import "token.odin";
-import "core:os.odin";
 
 sample := `
 x = 123;
