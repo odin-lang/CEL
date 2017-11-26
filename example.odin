@@ -1,5 +1,6 @@
 import "cel.odin";
 import "token.odin";
+import "core:os.odin";
 
 sample := `
 x = 123;
@@ -21,12 +22,22 @@ h = x < y and w == "foobar"
 i = h ? 123 : "google"
 
 j = nil
+
+"127.0.0.1" = "value" # Keys can be strings
+
+"foo" = {
+	"bar" = {
+		"baz" = 123 # optional commas if newline is present
+		"zab" = 456
+		"abz" = 789
+	},
+};
 `;
 
 
 main :: proc() {
 	t: token.Tokenizer;
-	token.init(&t, cast([]u8)sample);
+	token.init(&t, cast([]byte)sample);
 
 	p: cel.Parser;
 	if ok := cel.parser_init(&p, &t); !ok {

@@ -2,6 +2,8 @@ import "core:fmt.odin"
 import "core:strconv.odin"
 import "core:os.odin"
 import "core:raw.odin"
+import "core:utf8.odin"
+import "core:strings.odin"
 import "token.odin"
 
 
@@ -168,6 +170,144 @@ next_token :: proc(p: ^Parser) -> token.Token {
 	return prev;
 }
 
+unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := false, tail_string := "", success: bool) {
+	hex_to_int :: proc(c: byte) -> int {
+		switch c {
+		case '0'...'9': return int(c-'0');
+		case 'a'...'f': return int(c-'a')+10;
+		case 'A'...'F': return int(c-'A')+10;
+		}
+		return -1;
+	}
+
+	if s[0] == quote && quote == '"' {
+		return success = false;
+	} else if s[0] >= 0x80 {
+		r, w := utf8.decode_rune(s);
+		return r, true, s[w..], true;
+	} else if s[0] != '\\' {
+		return rune(s[0]), false, s[1..], true;
+	}
+
+	if len(s) <= 1 {
+		return success = false;
+	}
+	c := s[1];
+	s = s[2..];
+
+	r: rune;
+	multiple_bytes := false;
+
+	switch c {
+	case:
+		return success = false;
+
+	case 'a':  r = '\a';
+	case 'b':  r = '\b';
+	case 'f':  r = '\f';
+	case 'n':  r = '\n';
+	case 'r':  r = '\r';
+	case 't':  r = '\t';
+	case 'v':  r = '\v';
+	case '\\': r = '\\';
+
+	case '0'...'7':
+		v := int(c-'0');
+		if len(s) < 2 {
+			return success = false;
+		}
+		for i in 0..2 {
+			d := int(s[i]-'0');
+			if d < 0 || d > 7 {
+				return success = false;
+			}
+			v = (v<<3) | d;
+		}
+		s = s[2..];
+		if v > 0xff {
+			return success = false;
+		}
+		r = rune(v);
+
+	case 'x', 'u', 'U':
+		count: int;
+		switch c {
+		case 'x': count = 2;
+		case 'u': count = 4;
+		case 'U': count = 8;
+		}
+
+		if len(s) < count {
+			return success = false;
+		}
+
+		for i in 0..count {
+			d := hex_to_int(s[i]);
+			if d < 0 {
+				return success = false;
+			}
+			r = (r<<4) | rune(d);
+		}
+		s = s[count..];
+		if c == 'x' {
+			break;
+		}
+		if r > utf8.MAX_RUNE {
+			return success = false;
+		}
+		multiple_bytes = true;
+	}
+
+	return r, multiple_bytes, s, true;
+}
+
+
+unquote_string :: proc(p: ^Parser, t: token.Token) -> (string, bool) {
+	if t.kind != token.Kind.String {
+		return t.lit, true;
+	}
+	s := t.lit;
+	n := len(s);
+	quote := '"';
+
+	if strings.contains_rune(s, '\n') >= 0 {
+		return s, false;
+	}
+
+	if strings.contains_rune(s, '\\') < 0 && strings.contains_rune(s, quote) < 0 {
+		if quote == '"' {
+			return s, true;
+		}
+	}
+
+
+	buf_len := 3*len(s) / 2;
+	buf := make([]byte, buf_len);
+	offset := 0;
+	for len(s) > 0 {
+		r, multiple_bytes, tail_string, ok := unquote_char(s, byte(quote));
+		if !ok {
+			free(buf);
+			return s, false;
+		}
+		s = tail_string;
+		if r < 0x80 || !multiple_bytes {
+			buf[offset] = byte(r);
+			offset += 1;
+		} else {
+			b, w := utf8.encode_rune(r);
+			copy(buf[offset..], b[..w]);
+			offset += w;
+		}
+	}
+
+	new_string := string(buf[..offset]);
+
+	append(&p.allocated_strings, new_string);
+
+	return new_string, true;
+}
+
 
 allow_token :: proc(p: ^Parser, kind: token.Kind) -> bool {
 	if p.curr_token.kind == kind {
@@ -273,7 +413,9 @@ parse_operand :: proc(p: ^Parser) -> (Value, token.Pos) {
 
 	case String:
 		next_token(p);
-		return string(tok.lit), tok.pos;
+		str, ok := unquote_string(p, tok);
+		if !ok do error(p, tok.pos, "Unable to unquote string");
+		return string(str), tok.pos;
 
 	case Open_Paren:
 		expect_token(p, Open_Paren);
@@ -289,7 +431,9 @@ parse_operand :: proc(p: ^Parser) -> (Value, token.Pos) {
 			elem, pos := parse_expr(p);
 			append(&elems, elem);
 
-			if !allow_token(p, Comma) {
+			if p.curr_token.kind == Semicolon && p.curr_token.lit == "\n" {
+				next_token(p);
+			} else if !allow_token(p, Comma) {
 				break;
 			}
 
@@ -306,8 +450,13 @@ parse_operand :: proc(p: ^Parser) -> (Value, token.Pos) {
 
 		for p.curr_token.kind != Close_Brace &&
 		    p.curr_token.kind != EOF {
-		    name_tok := expect_token(p, Ident);
-		    name := name_tok.lit;
+		    name_tok := p.curr_token;
+		    if !allow_token(p, Ident) && !allow_token(p, String) {
+		    	name_tok = expect_token(p, Ident);
+		    }
+
+			name, ok := unquote_string(p, name_tok);
+			if !ok do error(p, tok.pos, "Unable to unquote string");
 		    expect_token(p, Assign);
 			elem, pos := parse_expr(p);
 
@@ -317,7 +466,9 @@ parse_operand :: proc(p: ^Parser) -> (Value, token.Pos) {
 				dict[name] = elem;
 			}
 
-			if !allow_token(p, Comma) {
+			if p.curr_token.kind == Semicolon && p.curr_token.lit == "\n" {
+				next_token(p);
+			} else if !allow_token(p, Comma) {
 				break;
 			}
 		}
@@ -338,14 +489,15 @@ parse_atom_expr :: proc(p: ^Parser, operand: Value, pos: token.Pos) -> (Value, t
 			tok := next_token(p);
 
 			switch tok.kind {
-			case Ident:
+			case Ident, String:
 				d, ok := operand.(Dict);
 				if !ok || d == nil {
 					error(p, tok.pos, "Expected a dictionary");
 					operand = nil;
 					continue;
 				}
-				name := tok.lit;
+				name, usok := unquote_string(p, tok);
+				if !usok do error(p, tok.pos, "Unable to unquote string");
 				val, found := d[name];
 				if !found {
 					error(p, tok.pos, "Field %s not found in dictionary", name);
@@ -525,9 +677,9 @@ calculate_binary_value :: proc(p: ^Parser, op: token.Kind, x, y: Value) -> (Valu
 		switch op {
 		case Add:
 			n := len(a) + len(b);
-			data := make([]u8, n);
-			copy(data[..], cast([]u8)a);
-			copy(data[len(a)..], cast([]u8)b);
+			data := make([]byte, n);
+			copy(data[..], cast([]byte)a);
+			copy(data[len(a)..], cast([]byte)b);
 			s := string(data);
 			append(&p.allocated_strings, s);
 			return s, true;
@@ -623,9 +775,10 @@ parse_assignment :: proc(p: ^Parser) -> bool {
 	}
 
 	tok := p.curr_token;
-	if allow_token(p, Ident) {
+	if allow_token(p, Ident) || allow_token(p, String) {
 		expect_token(p, Assign);
-		name := tok.lit;
+		name, ok := unquote_string(p, tok);
+		if !ok do error(p, tok.pos, "Unable to unquote string");
 		expr, pos := parse_expr(p);
 		d := top_dict(p);
 		if _, ok := d[name]; ok {
@@ -636,7 +789,7 @@ parse_assignment :: proc(p: ^Parser) -> bool {
 		expect_semicolon(p);
 		return true;
 	}
-	error(p, tok.pos, "Expected an assignment, got %s", tok.kind);
+	error(p, tok.pos, "Expected an assignment, got %s", token.kind_to_string[tok.kind]);
 	fix_advance(p);
 	return false;
 }

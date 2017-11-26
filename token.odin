@@ -76,7 +76,7 @@ Token :: struct {
 }
 
 Tokenizer :: struct {
-	src: []u8,
+	src: []byte,
 
 	file:        string, // May not be used
 
@@ -166,9 +166,9 @@ is_operator :: proc(tok: Kind) -> bool do return Kind._operator_start < tok && t
 is_keyword  :: proc(tok: Kind) -> bool do return Kind._keyword_start  < tok && tok < Kind._keyword_end;
 
 
-init :: proc(t: ^Tokenizer, src: []u8) {
+init :: proc(t: ^Tokenizer, src: []byte, file := "") {
 	t.src = src;
-
+	t.file = file;
 	t.curr_rune   = ' ';
 	t.offset      = 0;
 	t.read_offset = 0;
@@ -253,11 +253,12 @@ skip_whitespace :: proc(t: ^Tokenizer) {
 				break loop;
 			}
 			fallthrough;
-		case ' ', '\t', '\r':
+		case ' ', '\t', '\r', '\v', '\f':
 			advance_to_next_rune(t);
-		}
 
-		break loop;
+		case:
+			break loop;
+		}
 	}
 }
 
@@ -280,7 +281,7 @@ digit_value :: proc(r: rune) -> int {
 
 scan_number :: proc(t: ^Tokenizer, seen_decimal_point: bool) -> (Kind, string) {
 	scan_manitissa :: proc(t: ^Tokenizer, base: int) {
-		for digit_value(t.curr_rune) < base {
+		for digit_value(t.curr_rune) < base || t.curr_rune == '_' {
 			advance_to_next_rune(t);
 		}
 	}
@@ -371,13 +372,11 @@ scan :: proc(t: ^Tokenizer) -> Token {
 
 	switch r := t.curr_rune; {
 	case is_letter(r):
+		insert_semi = true;
 		lit = scan_identifier(t);
 		tok = Kind.Ident;
 		if len(lit) > 1 {
 			tok = token_lookup(lit);
-		}
-		if tok == Kind.Ident {
-			insert_semi = true;
 		}
 
 	case '0' <= r && r <= '9':
@@ -399,6 +398,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 			return Token{Kind.Semicolon, pos, "\n"};
 
 		case '"':
+			insert_semi = true;
 			quote := r;
 			tok = Kind.String;
 			for {
@@ -424,23 +424,38 @@ scan :: proc(t: ^Tokenizer) -> Token {
 			for t.curr_rune != '\n' && t.curr_rune >= 0 {
 				advance_to_next_rune(t);
 			}
-			advance_to_next_rune(t);
-			tok = Kind.Semicolon;
-			lit = ";";
+			if t.insert_semi {
+				t.insert_semi = false;
+				return Token{Kind.Semicolon, pos, "\n"};
+			}
+			// Recursive!
+			return scan(t);
 
 		case '?': tok = Kind.Question;
 		case ':': tok = Kind.Colon;
 
+		case ';':
+			tok = Kind.Semicolon;
+			lit = ";";
 		case ',': tok = Kind.Comma;
-		case ';': tok = Kind.Semicolon;
-		case '(': tok = Kind.Open_Paren;
-		case ')': tok = Kind.Close_Paren; insert_semi = true;
 
-		case '[': tok = Kind.Open_Bracket;
-		case ']': tok = Kind.Close_Bracket; insert_semi = true;
+		case '(':
+			tok = Kind.Open_Paren;
+		case ')':
+			insert_semi = true;
+			tok = Kind.Close_Paren;
 
-		case '{': tok = Kind.Open_Brace;
-		case '}': tok = Kind.Close_Brace; insert_semi = true;
+		case '[':
+			tok = Kind.Open_Bracket;
+		case ']':
+			insert_semi = true;
+			tok = Kind.Close_Bracket;
+
+		case '{':
+			tok = Kind.Open_Brace;
+		case '}':
+			insert_semi = true;
+			tok = Kind.Close_Brace;
 
 		case '+': tok = Kind.Add;
 		case '-': tok = Kind.Sub;
