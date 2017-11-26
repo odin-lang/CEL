@@ -12,7 +12,7 @@ w = "foo" + "bar";
 
 asd = "Semicolons are optional"
 
-a = {id = {b = 123}} # Dict
+a = {id = {b = 123, c = false}} # Dict
 b = a.id.b
 
 f = [1, 4, 9] # Array
@@ -26,34 +26,23 @@ j = nil
 "127.0.0.1" = "value" # Keys can be strings
 
 "foo" = {
-	"bar" = {
+	bar = {
 		"baz" = 123 # optional commas if newline is present
 		"zab" = 456
-		"abz" = 789
-	},
-};
+		"abz" = "I'm a string,\tJos\u00e9."
+	}
+}
 `;
 
 
 main :: proc() {
-	t: token.Tokenizer;
-	token.init(&t, cast([]byte)sample);
-
-	p: cel.Parser;
-	if ok := cel.parser_init(&p, &t); !ok {
+	p, ok := cel.create_from_string(sample);
+	if !ok {
 		return;
 	}
-	defer cel.parser_destroy(&p);
-
-	for p.curr_token.kind != token.Kind.EOF &&
-	    p.curr_token.kind != token.Kind.Illegal &&
-	    p.curr_token_index < len(p.tokens) {
-		if !cel.parse_assignment(&p) {
-			break;
-		}
-	}
+	defer cel.destroy(p);
 
 	if p.error_count == 0 {
-		cel.print(&p);
+		cel.print(p);
 	}
 }

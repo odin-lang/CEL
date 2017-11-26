@@ -92,12 +92,24 @@ print :: proc(p: ^Parser, pretty := false) {
 	}
 }
 
+create_from_string :: proc(src: string) -> (^Parser, bool) {
+	return init(cast([]byte)src);
+}
 
-parser_init :: proc(p: ^Parser, t: ^token.Tokenizer) -> bool {
+
+init :: proc(src: []byte) -> (^Parser, bool) {
+	t: token.Tokenizer;
+	token.init(&t, src);
+	return create_from_tokenizer(&t);
+}
+
+
+create_from_tokenizer :: proc(t: ^token.Tokenizer) -> (^Parser, bool) {
+	p := new(Parser);
 	for {
 		tok := token.scan(t);
 		if tok.kind == token.Kind.Illegal {
-			return false;
+			return p, false;
 		}
 		append(&p.tokens, tok);
 		if tok.kind == token.Kind.EOF {
@@ -106,14 +118,14 @@ parser_init :: proc(p: ^Parser, t: ^token.Tokenizer) -> bool {
 	}
 
 	if t.error_count > 0 {
-		return false;
+		return p, false;
 	}
 
 	if len(p.tokens) == 0 {
 		tok := token.Token{kind = token.Kind.EOF};
 		tok.line, tok.column = 1, 1;
 		append(&p.tokens, tok);
-		return true;
+		return p, true;
 	}
 
 	p.curr_token_index = 0;
@@ -123,10 +135,19 @@ parser_init :: proc(p: ^Parser, t: ^token.Tokenizer) -> bool {
 	p.root = Dict{};
 	p.dict_stack = make([dynamic]^Dict, 0, 4);
 	append(&p.dict_stack, &p.root);
-	return true;
+
+	for p.curr_token.kind != token.Kind.EOF &&
+	    p.curr_token.kind != token.Kind.Illegal &&
+	    p.curr_token_index < len(p.tokens) {
+		if !parse_assignment(p) {
+			break;
+		}
+	}
+
+	return p, true;
 }
 
-parser_destroy :: proc(p: ^Parser) {
+destroy :: proc(p: ^Parser) {
 	destroy_value :: proc(value: Value) {
 		switch v in value {
 		case Array:
@@ -145,6 +166,7 @@ parser_destroy :: proc(p: ^Parser) {
 	free(p.dict_stack);
 
 	destroy_value(p.root);
+	free(p);
 }
 
 error :: proc(p: ^Parser, pos: token.Pos, msg: string, args: ...any) {
@@ -210,6 +232,9 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := 
 	case 't':  r = '\t';
 	case 'v':  r = '\v';
 	case '\\': r = '\\';
+
+	case '"':  r = '"';
+	case '\'': r = '\'';
 
 	case '0'...'7':
 		v := int(c-'0');
