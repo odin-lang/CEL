@@ -672,10 +672,10 @@ calculate_binary_value :: proc(p: ^Parser, op: token.Kind, x, y: Value) -> (Valu
 		case Rem:   return a % b, true;
 		case Eq:    return a == b, true;
 		case NotEq: return a != b, true;
-		case Lt:    return a != b, true;
-		case Gt:    return a != b, true;
-		case LtEq:  return a != b, true;
-		case GtEq:  return a != b, true;
+		case Lt:    return a <  b, true;
+		case Gt:    return a >  b, true;
+		case LtEq:  return a <= b, true;
+		case GtEq:  return a >= b, true;
 		}
 
 	case f64:
@@ -689,10 +689,10 @@ calculate_binary_value :: proc(p: ^Parser, op: token.Kind, x, y: Value) -> (Valu
 		case Quo:   return a / b, true;
 		case Eq:    return a == b, true;
 		case NotEq: return a != b, true;
-		case Lt:    return a != b, true;
-		case Gt:    return a != b, true;
-		case LtEq:  return a != b, true;
-		case GtEq:  return a != b, true;
+		case Lt:    return a <  b, true;
+		case Gt:    return a >  b, true;
+		case LtEq:  return a <= b, true;
+		case GtEq:  return a >= b, true;
 		}
 
 	case string:
@@ -711,10 +711,10 @@ calculate_binary_value :: proc(p: ^Parser, op: token.Kind, x, y: Value) -> (Valu
 
 		case Eq:    return a == b, true;
 		case NotEq: return a != b, true;
-		case Lt:    return a != b, true;
-		case Gt:    return a != b, true;
-		case LtEq:  return a != b, true;
-		case GtEq:  return a != b, true;
+		case Lt:    return a <  b, true;
+		case Gt:    return a >  b, true;
+		case LtEq:  return a <= b, true;
+		case GtEq:  return a >= b, true;
 		}
 	}
 
