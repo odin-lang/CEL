@@ -513,7 +513,7 @@ parse_atom_expr :: proc(p: ^Parser, operand: Value, pos: token.Pos) -> (Value, t
 			tok := next_token(p);
 
 			switch tok.kind {
-			case Ident, String:
+			case Ident:
 				d, ok := operand.(Dict);
 				if !ok || d == nil {
 					error(p, tok.pos, "Expected a dictionary");
@@ -530,7 +530,7 @@ parse_atom_expr :: proc(p: ^Parser, operand: Value, pos: token.Pos) -> (Value, t
 				}
 				operand = val;
 			case:
-				error(p, tok.pos, "Expected a selector, got %s", p.curr_token.lit);
+				error(p, tok.pos, "Expected a selector, got %s", tok.kind);
 				operand = nil;
 			}
 
@@ -539,8 +539,9 @@ parse_atom_expr :: proc(p: ^Parser, operand: Value, pos: token.Pos) -> (Value, t
 			index, index_pos := parse_expr(p);
 			close := expect_token(p, Close_Bracket);
 
-			a, ok := operand.(Array);
-			if ok {
+
+			switch a in operand {
+			case Array:
 				i, ok := index.(i64);
 				if !ok {
 					error(p, index_pos, "Index must be an integer for an array");
@@ -555,8 +556,28 @@ parse_atom_expr :: proc(p: ^Parser, operand: Value, pos: token.Pos) -> (Value, t
 					operand = nil;
 					continue;
 				}
-			} else {
-				error(p, index_pos, "Indexing is only allowed on an array");
+
+			case Dict:
+				key, ok := index.(string);
+				if !ok {
+					error(p, index_pos, "Index must be a string for a dictionary");
+					operand = nil;
+					continue;
+				}
+
+				val, found := a[key];
+				if found {
+					operand = val;
+				} else {
+					error(p, index_pos, "`%s` was not found in the dictionary", key);
+					operand = nil;
+					continue;
+				}
+
+
+
+			case:
+				error(p, index_pos, "Indexing is only allowed on an array or dictionary");
 			}
 
 		case:
@@ -571,6 +592,13 @@ parse_unary_expr :: proc(p: ^Parser) -> (Value, token.Pos) {
 	using token.Kind;
 	op := p.curr_token;
 	switch p.curr_token.kind {
+	case At:
+		next_token(p);
+		tok := expect_token(p, String);
+		v, ok := lookup_value(p, tok.lit);
+		if !ok do error(p, tok.pos, "Undeclared identifier %s", tok.lit);
+		return parse_atom_expr(p, v, tok.pos);
+
 	case Add, Sub:
 		next_token(p);
 		// TODO(bill): Calcuate values as you go!

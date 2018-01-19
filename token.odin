@@ -43,6 +43,7 @@ Kind :: enum {
 		LtEq,  // <=
 		GtEq,  // >=
 
+		At,    // @
 	_operator_end,
 
 	_punc_start,
@@ -122,6 +123,7 @@ kind_to_string := [Kind.count]string{
 	"+", "-", "*", "/", "%",
 	"!",
 	"==", "!=", "<", ">", "<=", ">=",
+	"@",
 	"",
 
 	"",
@@ -433,6 +435,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 
 		case '?': tok = Kind.Question;
 		case ':': tok = Kind.Colon;
+		case '@': tok = Kind.At;
 
 		case ';':
 			tok = Kind.Semicolon;
