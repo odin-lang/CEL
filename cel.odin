@@ -192,7 +192,7 @@ next_token :: proc(p: ^Parser) -> token.Token {
 	return prev;
 }
 
-unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := false, tail_string := "", success: bool) {
+unquote_char :: proc(s: string, quote: byte) -> (r: rune, multiple_bytes: bool, tail_string: string, success: bool) {
 	hex_to_int :: proc(c: byte) -> int {
 		switch c {
 		case '0'...'9': return int(c-'0');
@@ -203,7 +203,7 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := 
 	}
 
 	if s[0] == quote && quote == '"' {
-		return success = false;
+		return;
 	} else if s[0] >= 0x80 {
 		r, w := utf8.decode_rune_from_string(s);
 		return r, true, s[w..], true;
@@ -212,17 +212,14 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := 
 	}
 
 	if len(s) <= 1 {
-		return success = false;
+		return;
 	}
 	c := s[1];
 	s = s[2..];
 
-	r: rune;
-	multiple_bytes := false;
-
 	switch c {
 	case:
-		return success = false;
+		return;
 
 	case 'a':  r = '\a';
 	case 'b':  r = '\b';
@@ -239,18 +236,18 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := 
 	case '0'...'7':
 		v := int(c-'0');
 		if len(s) < 2 {
-			return success = false;
+			return;
 		}
 		for i in 0..2 {
 			d := int(s[i]-'0');
 			if d < 0 || d > 7 {
-				return success = false;
+				return;
 			}
 			v = (v<<3) | d;
 		}
 		s = s[2..];
 		if v > 0xff {
-			return success = false;
+			return;
 		}
 		r = rune(v);
 
@@ -263,13 +260,13 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := 
 		}
 
 		if len(s) < count {
-			return success = false;
+			return;
 		}
 
 		for i in 0..count {
 			d := hex_to_int(s[i]);
 			if d < 0 {
-				return success = false;
+				return;
 			}
 			r = (r<<4) | rune(d);
 		}
@@ -278,12 +275,14 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune = 0, multiple_bytes := 
 			break;
 		}
 		if r > utf8.MAX_RUNE {
-			return success = false;
+			return;
 		}
 		multiple_bytes = true;
 	}
 
-	return r, multiple_bytes, s, true;
+	success = true;
+	tail_string = s;
+	return;
 }
 
 
