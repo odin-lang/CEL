@@ -2,7 +2,7 @@ import "core:fmt.odin"
 import "core:utf8.odin"
 
 
-Kind :: enum {
+Kind :: enum #export {
 	Illegal,
 	EOF,
 	Comment,
@@ -94,11 +94,11 @@ Tokenizer :: struct {
 
 
 keywords := map[string]Kind{
-	"true"  = Kind.True,
-	"false" = Kind.False,
-	"nil"   = Kind.Nil,
-	"and"   = Kind.And,
-	"or"    = Kind.Or,
+	"true"  = True,
+	"false" = False,
+	"nil"   = Nil,
+	"and"   = And,
+	"or"    = Or,
 };
 
 kind_to_string := [Kind.count]string{
@@ -136,8 +136,6 @@ kind_to_string := [Kind.count]string{
 };
 
 precedence :: proc(op: Kind) -> int {
-	using Kind;
-
 	switch op {
 	case Question:
 		return 1;
@@ -160,12 +158,12 @@ token_lookup :: proc(ident: string) -> Kind {
 	if tok, is_keyword := keywords[ident]; is_keyword {
 		return tok;
 	}
-	return Kind.Ident;
+	return Ident;
 }
 
-is_literal  :: proc(tok: Kind) -> bool do return Kind._literal_start  < tok && tok < Kind._literal_end;
-is_operator :: proc(tok: Kind) -> bool do return Kind._operator_start < tok && tok < Kind._operator_end;
-is_keyword  :: proc(tok: Kind) -> bool do return Kind._keyword_start  < tok && tok < Kind._keyword_end;
+is_literal  :: proc(tok: Kind) -> bool do return _literal_start  < tok && tok < _literal_end;
+is_operator :: proc(tok: Kind) -> bool do return _operator_start < tok && tok < _operator_end;
+is_keyword  :: proc(tok: Kind) -> bool do return _keyword_start  < tok && tok < _keyword_end;
 
 
 init :: proc(t: ^Tokenizer, src: []byte, file := "") {
@@ -289,7 +287,7 @@ scan_number :: proc(t: ^Tokenizer, seen_decimal_point: bool) -> (Kind, string) {
 	}
 	scan_exponent :: proc(t: ^Tokenizer, tok: Kind, offset: int) -> (Kind, string) {
 		if t.curr_rune == 'e' || t.curr_rune == 'E' {
-			tok = Kind.Float;
+			tok = Float;
 			advance_to_next_rune(t);
 			if t.curr_rune == '-' || t.curr_rune == '+' {
 				advance_to_next_rune(t);
@@ -304,7 +302,7 @@ scan_number :: proc(t: ^Tokenizer, seen_decimal_point: bool) -> (Kind, string) {
 	}
 	scan_fraction :: proc(t: ^Tokenizer, tok: Kind, offset: int) -> (Kind, string) {
 		if t.curr_rune == '.' {
-			tok = Kind.Float;
+			tok = Float;
 			advance_to_next_rune(t);
 			scan_manitissa(t, 10);
 		}
@@ -313,11 +311,11 @@ scan_number :: proc(t: ^Tokenizer, seen_decimal_point: bool) -> (Kind, string) {
 	}
 
 	offset := t.offset;
-	tok := Kind.Integer;
+	tok := Integer;
 
 	if seen_decimal_point {
 		offset -= 1;
-		tok = Kind.Float;
+		tok = Float;
 		scan_manitissa(t, 10);
 		return scan_exponent(t, tok, offset);
 	}
@@ -376,7 +374,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 	case is_letter(r):
 		insert_semi = true;
 		lit = scan_identifier(t);
-		tok = Kind.Ident;
+		tok = Ident;
 		if len(lit) > 1 {
 			tok = token_lookup(lit);
 		}
@@ -391,18 +389,18 @@ scan :: proc(t: ^Tokenizer) -> Token {
 		case -1:
 			if t.insert_semi {
 				t.insert_semi = false;
-				return Token{Kind.Semicolon, pos, "\n"};
+				return Token{Semicolon, pos, "\n"};
 			}
-			return Token{Kind.EOF, pos, "\n"};
+			return Token{EOF, pos, "\n"};
 
 		case '\n':
 			t.insert_semi = false;
-			return Token{Kind.Semicolon, pos, "\n"};
+			return Token{Semicolon, pos, "\n"};
 
 		case '"':
 			insert_semi = true;
 			quote := r;
-			tok = Kind.String;
+			tok = String;
 			for {
 				r := t.curr_rune;
 				if r == '\n' || r < 0 {
@@ -428,70 +426,70 @@ scan :: proc(t: ^Tokenizer) -> Token {
 			}
 			if t.insert_semi {
 				t.insert_semi = false;
-				return Token{Kind.Semicolon, pos, "\n"};
+				return Token{Semicolon, pos, "\n"};
 			}
 			// Recursive!
 			return scan(t);
 
-		case '?': tok = Kind.Question;
-		case ':': tok = Kind.Colon;
-		case '@': tok = Kind.At;
+		case '?': tok = Question;
+		case ':': tok = Colon;
+		case '@': tok = At;
 
 		case ';':
-			tok = Kind.Semicolon;
+			tok = Semicolon;
 			lit = ";";
-		case ',': tok = Kind.Comma;
+		case ',': tok = Comma;
 
 		case '(':
-			tok = Kind.Open_Paren;
+			tok = Open_Paren;
 		case ')':
 			insert_semi = true;
-			tok = Kind.Close_Paren;
+			tok = Close_Paren;
 
 		case '[':
-			tok = Kind.Open_Bracket;
+			tok = Open_Bracket;
 		case ']':
 			insert_semi = true;
-			tok = Kind.Close_Bracket;
+			tok = Close_Bracket;
 
 		case '{':
-			tok = Kind.Open_Brace;
+			tok = Open_Brace;
 		case '}':
 			insert_semi = true;
-			tok = Kind.Close_Brace;
+			tok = Close_Brace;
 
-		case '+': tok = Kind.Add;
-		case '-': tok = Kind.Sub;
-		case '*': tok = Kind.Mul;
-		case '/': tok = Kind.Quo;
-		case '%': tok = Kind.Rem;
+		case '+': tok = Add;
+		case '-': tok = Sub;
+		case '*': tok = Mul;
+		case '/': tok = Quo;
+		case '%': tok = Rem;
 
 		case '!':
-			tok = Kind.Not;
+			tok = Not;
 			if t.curr_rune == '=' {
 				advance_to_next_rune(t);
-				tok = Kind.NotEq;
+				tok = NotEq;
 			}
 
 		case '=':
-			tok = Kind.Assign;
+			tok = Assign;
 			if t.curr_rune == '=' {
 				advance_to_next_rune(t);
-				tok = Kind.Eq;
+				tok = Eq;
 			}
 
 		case '<':
-			tok = Kind.Lt;
+			tok = Lt;
 			if t.curr_rune == '=' {
 				advance_to_next_rune(t);
-				tok = Kind.LtEq;
+				tok = LtEq;
 			}
 
 		case '>':
-			tok = Kind.Gt;
+			tok = Gt;
 			if t.curr_rune == '=' {
 				advance_to_next_rune(t);
-				tok = Kind.GtEq;
+				tok = GtEq;
 			}
 
 		case '.':
@@ -499,7 +497,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 				insert_semi = true;
 				tok, lit = scan_number(t, true);
 			} else {
-				tok = Kind.Period;
+				tok = Period;
 			}
 
 		case:
@@ -507,7 +505,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 				error(t, "Illegal character %r", r);
 			}
 			insert_semi = t.insert_semi;
-			tok = Kind.Illegal;
+			tok = Illegal;
 		}
 	}
 
