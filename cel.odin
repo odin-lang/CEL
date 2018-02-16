@@ -10,11 +10,12 @@ import "token.odin"
 Array :: []Value;
 Dict  :: map[string]Value;
 Nil_Value :: struct{};
+Annotated :: struct{value:^Value,annotations:[dynamic]string};
 
 Value :: union {
 	Nil_Value,
 	bool, i64, f64, string,
-	Array, Dict,
+	Array, Dict, Annotated,
 }
 
 Parser :: struct {
@@ -87,7 +88,14 @@ print_value :: proc(value: Value, pretty := true, indent := 0) {
 print :: proc(p: ^Parser, pretty := false) {
 	for name, val in p.root {
 		fmt.printf("%s = ", name);
-		print_value(val, pretty);
+		annotations, is_annotated := lookup_annotations(p, name);
+		if is_annotated {
+			for annotation in annotations {
+				fmt.printf("@%s ", annotation);
+			}
+		} 
+		val2, u := lookup_value(p, name);
+		print_value(val2, pretty);
 		fmt.println(";");
 	}
 }
@@ -157,6 +165,11 @@ destroy :: proc(p: ^Parser) {
 		case Dict:
 			for key, value in v do destroy_value(value);
 			free(v);
+			
+		case Annotated:
+			destroy_value(v.value^);
+			free(v.value);
+			free(v.annotations);
 		}
 	}
 
@@ -391,10 +404,30 @@ copy_value :: proc(value: Value) -> Value {
 	return value;
 }
 
+lookup_annotations :: proc(p: ^Parser, name: string) -> ([dynamic]string, bool) {
+	for i := len(p.dict_stack)-1; i >= 0; i -= 1 {
+		d := p.dict_stack[i];
+		if val, ok := d[name]; ok {
+			switch v in val {
+			case Annotated:
+				return v.annotations, true;
+			}
+			return nil, false;
+		}
+	}
+
+	return nil, false;
+}
+
 lookup_value :: proc(p: ^Parser, name: string) -> (Value, bool) {
 	for i := len(p.dict_stack)-1; i >= 0; i -= 1 {
 		d := p.dict_stack[i];
 		if val, ok := d[name]; ok {
+			switch v in val {
+			case Annotated:
+				val = v.value^;
+			}
+			
 			return copy_value(val), true;
 		}
 	}
@@ -817,10 +850,38 @@ parse_assignment :: proc(p: ^Parser) -> bool {
 
 	tok := p.curr_token;
 	if allow_token(p, token.Ident) || allow_token(p, token.String) {
-		expect_token(p, token.Assign);
+		annotations := make([dynamic]string, 0, 4);;
+		
+		for true {
+			t := p.curr_token;
+			if t.kind == token.Assign {
+				break;
+			} else if (t.kind == token.At) {
+				next_token(p);
+				text := expect_token(p, token.Ident);
+				append(&annotations, text.lit);
+			} else {
+				got := t.lit;
+				if got == "\n" do got = ";";
+				error(p, t.pos, "Expected equals sign or annotation, got %s", got);
+				break;
+			}
+		}
+		
+		next_token(p);
+		
 		name, ok := unquote_string(p, tok);
 		if !ok do error(p, tok.pos, "Unable to unquote string");
 		expr, pos := parse_expr(p);
+		
+		if len(annotations) >= 1 {
+			expr2 : Annotated;
+			expr2.value = new(Value);
+			expr2.value^ = expr;
+			expr2.annotations = annotations;
+			expr = expr2;
+		}
+		
 		d := top_dict(p);
 		if _, ok := d[name]; ok {
 			error(p, tok.pos, "Previous declaration of %s", name);
