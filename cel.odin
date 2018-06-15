@@ -294,6 +294,10 @@ unquote_string :: proc(p: ^Parser, t: Token) -> (string, bool) {
 	n := len(s);
 	quote := '"';
 
+	if s == `""` {
+        return "", true;
+    }
+
 	if strings.contains_rune(s, '\n') >= 0 {
 		return s, false;
 	}
