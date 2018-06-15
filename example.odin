@@ -1,5 +1,4 @@
-import "cel.odin";
-import "token.odin";
+package cel;
 
 sample := `
 x = 123;
@@ -37,13 +36,13 @@ bar = @"foo"["bar"].baz
 
 
 main :: proc() {
-	p, ok := cel.create_from_string(sample);
+	p, ok := create_from_string(sample);
 	if !ok {
 		return;
 	}
-	defer cel.destroy(p);
+	defer destroy(p);
 
 	if p.error_count == 0 {
-		cel.print(p);
+		print(p);
 	}
 }

@@ -1,6 +1,7 @@
-import "core:fmt.odin"
-import "core:utf8.odin"
+package cel;
 
+import "core:fmt";
+import "core:unicode/utf8";
 
 Kind :: enum #export {
 	Illegal,
@@ -166,7 +167,7 @@ is_operator :: proc(tok: Kind) -> bool do return _operator_start < tok && tok < 
 is_keyword  :: proc(tok: Kind) -> bool do return _keyword_start  < tok && tok < _keyword_end;
 
 
-init :: proc(t: ^Tokenizer, src: []byte, file := "") {
+tokenizer_init :: proc(t: ^Tokenizer, src: []byte, file := "") {
 	t.src = src;
 	t.file = file;
 	t.curr_rune   = ' ';
@@ -181,7 +182,7 @@ init :: proc(t: ^Tokenizer, src: []byte, file := "") {
 	}
 }
 
-error :: proc(t: ^Tokenizer, msg: string, args: ...any) {
+token_error :: proc(t: ^Tokenizer, msg: string, args: ...any) {
 	fmt.printf_err("%s(%d:%d) Error: ", t.file, t.line_count, t.read_offset-t.line_offset+1);
 	fmt.printf_err(msg, ...args);
 	fmt.println_err();
@@ -198,13 +199,13 @@ advance_to_next_rune :: proc(t: ^Tokenizer) {
 		r, w := rune(t.src[t.read_offset]), 1;
 		switch {
 		case r == 0:
-			error(t, "Illegal character NUL");
+			token_error(t, "Illegal character NUL");
 		case r >= utf8.RUNE_SELF:
 			r, w = utf8.decode_rune(t.src[t.read_offset..]);
 			if r == utf8.RUNE_ERROR && w == 1 {
-				error(t, "Illegal utf-8 encoding");
+				token_error(t, "Illegal utf-8 encoding");
 			} else if r == utf8.RUNE_BOM && t.offset > 0 {
-				error(t, "Illegal byte order mark");
+				token_error(t, "Illegal byte order mark");
 			}
 		}
 
@@ -295,7 +296,7 @@ scan_number :: proc(t: ^Tokenizer, seen_decimal_point: bool) -> (Kind, string) {
 			if digit_value(t.curr_rune) < 10 {
 				scan_manitissa(t, 10);
 			} else {
-				error(t, "Illegal floating point exponent");
+				token_error(t, "Illegal floating point exponent");
 			}
 		}
 		return tok, string(t.src[offset .. t.offset]);
@@ -328,19 +329,19 @@ scan_number :: proc(t: ^Tokenizer, seen_decimal_point: bool) -> (Kind, string) {
 			advance_to_next_rune(t);
 			scan_manitissa(t, 2);
 			if t.offset - offset <= 2 {
-				error(t, "Illegal binary number");
+				token_error(t, "Illegal binary number");
 			}
 		case 'o', 'O':
 			advance_to_next_rune(t);
 			scan_manitissa(t, 8);
 			if t.offset - offset <= 2 {
-				error(t, "Illegal octal number");
+				token_error(t, "Illegal octal number");
 			}
 		case 'x', 'X':
 			advance_to_next_rune(t);
 			scan_manitissa(t, 16);
 			if t.offset - offset <= 2 {
-				error(t, "Illegal hexadecimal number");
+				token_error(t, "Illegal hexadecimal number");
 			}
 		case:
 			scan_manitissa(t, 10);
@@ -404,7 +405,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 			for {
 				r := t.curr_rune;
 				if r == '\n' || r < 0 {
-					error(t, "String literal not terminated");
+					token_error(t, "String literal not terminated");
 					break;
 				}
 				advance_to_next_rune(t);
@@ -502,7 +503,7 @@ scan :: proc(t: ^Tokenizer) -> Token {
 
 		case:
 			if r != utf8.RUNE_BOM {
-				error(t, "Illegal character %r", r);
+				token_error(t, "Illegal character '%r'", r);
 			}
 			insert_semi = t.insert_semi;
 			tok = Illegal;
