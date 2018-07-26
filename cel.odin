@@ -152,18 +152,18 @@ destroy :: proc(p: ^Parser) {
 		switch v in value {
 		case Array:
 			for elem in v do destroy_value(elem);
-			free(v);
+			delete(v);
 
 		case Dict:
 			for key, value in v do destroy_value(value);
-			free(v);
+			delete(v);
 		}
 	}
 
-	free(p.tokens);
-	for s in p.allocated_strings do free(s);
-	free(p.allocated_strings);
-	free(p.dict_stack);
+	delete(p.tokens);
+	for s in p.allocated_strings do delete(s);
+	delete(p.allocated_strings);
+	delete(p.dict_stack);
 
 	destroy_value(p.root);
 	free(p);
@@ -315,7 +315,7 @@ unquote_string :: proc(p: ^Parser, t: Token) -> (string, bool) {
 	for len(s) > 0 {
 		r, multiple_bytes, tail_string, ok := unquote_char(s, byte(quote));
 		if !ok {
-			free(buf);
+			delete(buf);
 			return s, false;
 		}
 		s = tail_string;
