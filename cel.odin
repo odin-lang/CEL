@@ -34,7 +34,7 @@ Parser :: struct {
 
 print_value :: proc(value: Value, pretty := true, indent := 0) {
 	print_indent :: proc(indent: int) {
-		for i in 0..indent do fmt.print("\t");
+		for i in 0..indent-1 do fmt.print("\t");
 	}
 
 	switch v in value {
@@ -238,14 +238,14 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune, multiple_bytes: bool, 
 		if len(s) < 2 {
 			return;
 		}
-		for i in 0..2 {
+		for i in 0.. {
 			d := int(s[i]-'0');
 			if d < 0 || d > 7 {
 				return;
 			}
 			v = (v<<3) | d;
 		}
-		s = s[2..];
+		s = s[2:];
 		if v > 0xff {
 			return;
 		}
@@ -263,7 +263,7 @@ unquote_char :: proc(s: string, quote: byte) -> (r: rune, multiple_bytes: bool, 
 			return;
 		}
 
-		for i in 0..count {
+		for i in 0..count-1 {
 			d := hex_to_int(s[i]);
 			if d < 0 {
 				return;
